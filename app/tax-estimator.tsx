@@ -170,13 +170,13 @@ export default function TaxCalculator() {
           </Alert>
           <form className="space-y-4 mb-8" onSubmit={(e) => e.preventDefault()}>
             <div>
-              <Label htmlFor="foreignCountry">Foreign Country (Form 1040-NR, Page 1)</Label>
+              <Label htmlFor="foreignCountry">Foreign Country</Label>
               <Select onValueChange={handleForeignCountryChange} value={taxInfo.foreignCountry}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select your foreign country" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="china">China, People's Republic of</SelectItem>
+                  <SelectItem value="china">China, People&#39;s Republic of</SelectItem>
                   <SelectItem value="india">India</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
