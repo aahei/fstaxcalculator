@@ -163,7 +163,7 @@ export default function TaxCalculator() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Disclaimer</AlertTitle>
             <AlertDescription>
-              This tax estimator is for educational purposes only and should not be considered as professional tax
+              This tax calculator is for educational purposes only and should not be considered as professional tax
               advice. Tax laws and regulations are complex and subject to change. For accurate tax calculations, please
               consult with a qualified tax professional or refer to the official IRS guidelines.
             </AlertDescription>
