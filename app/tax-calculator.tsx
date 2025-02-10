@@ -328,9 +328,9 @@ export default function TaxCalculator() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Disclaimer</AlertTitle>
             <AlertDescription>
-              This tax calculator is for educational purposes only and should not be considered as professional tax
-              advice. Tax laws and regulations are complex and subject to change. For accurate tax calculations, please
-              consult with a qualified tax professional or refer to the official IRS guidelines.
+              This tax calculator is for informational purposes only and does not constitute tax advice.
+              Everything here is not guaranteed to be accurate and does not apply to all situations.
+              Please consult with a tax professional regarding your tax situation.
             </AlertDescription>
           </Alert>
           <form className="space-y-4 mb-8" onSubmit={(e) => e.preventDefault()}>
