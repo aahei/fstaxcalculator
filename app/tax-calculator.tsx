@@ -15,6 +15,9 @@ import { format } from "date-fns"
 import type { TaxInfo, TreatyExemption, TreatyRate, incomeCode } from "@/app/types"
 import { TreatyExemptionInput } from "@/components/treaty-exemption-input"
 
+const standardDeduction = 14600
+const saltMaxDeduction = 10000
+
 const treatyExemptions: Record<string, TreatyExemption[]> = {
   china: [
     {
@@ -225,7 +228,7 @@ export default function TaxCalculator() {
 
       const scholarshipExemptions = countryExemptions
         .filter(exemption => exemption.applyTo === "scholarships" && claimTreatyExemptions[exemption.code])
-        .reduce((total, exemption) => total + scholarships, 0)
+        .reduce((total, exemption) => total + (claimTreatyExemptions[exemption.code] || 0), 0)
 
       return {
         exemptScholarships: scholarshipExemptions,
@@ -244,9 +247,9 @@ export default function TaxCalculator() {
     charitableDistributions: number,
     stateLocalTaxes: number,
   ): number => {
-    const saltDeduction = Math.min(stateLocalTaxes, 10000) // SALT deduction capped at $10,000
+    const saltDeduction = Math.min(stateLocalTaxes, saltMaxDeduction)
     if (foreignCountry === "india") {
-      return Math.max(14600, charitableDistributions + saltDeduction) // Standard deduction for India is $14,600
+      return Math.max(standardDeduction, charitableDistributions + saltDeduction)
     }
     return charitableDistributions + saltDeduction
   }
@@ -543,7 +546,7 @@ export default function TaxCalculator() {
       </Card>
       <div className="w-full py-4 mt-8 border-t">
         <p className="text-center text-sm text-gray-500">
-          © {format(new Date(), "yyyy")} Tax Estimator. All rights reserved.
+          © {format(new Date(), "yyyy")} <a href="https://github.com/aahei" className="hover:underline">Ahei</a>
         </p>
       </div>
     </>
