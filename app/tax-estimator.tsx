@@ -12,14 +12,31 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
 import { format } from "date-fns"
+import { TreatyBenefitInput } from "@/components/treaty-benefit-input"
+import type { TaxInfo, TreatyBenefit, treatyCode } from "@/app/types"
 
-type TaxInfo = {
-  foreignCountry: string
-  wages: number
-  scholarships: number
-  capitalGains: number
-  charitableDistributions: number
-  stateLocalTaxes: number
+// Move treatyBenefits outside component
+const treatyBenefits: Record<string, TreatyBenefit[]> = {
+  china: [
+    {
+      code: "20",
+      name: "Treaty Benefits for Studying and Training",
+      max: 5000,
+      applyTo: "wages",
+    },
+    {
+      code: "19",
+      name: "Treaty Benefits for Teaching and Research",
+      max: null,
+      applyTo: "wages",
+    },
+    {
+      code: "16",
+      name: "Treaty Benefits for Scholarship or Fellowship Grants",
+      max: null,
+      applyTo: "scholarships",
+    }
+  ],
 }
 
 export default function TaxCalculator() {
@@ -30,6 +47,7 @@ export default function TaxCalculator() {
     capitalGains: 0,
     charitableDistributions: 0,
     stateLocalTaxes: 0,
+    claimTreatyBenefits: {}
   })
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
 
@@ -40,13 +58,35 @@ export default function TaxCalculator() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
-    // Remove leading zeros and convert to number
-    let correctedValue = name === "foreignCountry" ? value : Number(value.replace(/^0+/, ""))
-    // Ensure capital gains are non-negative
-    if (name === "capitalGains") {
-      correctedValue = Math.max(0, Number(correctedValue))
+
+    if (name == "foreignCountry") {
+      setTaxInfo((prev) => ({ ...prev, foreignCountry: value }))
+      return
     }
-    setTaxInfo((prev) => ({ ...prev, [name]: correctedValue }))
+
+    let correctedValue = Number(value.replace(/^0+/, ""))
+    if (name === "capitalGains") {
+      correctedValue = Math.max(0, correctedValue)
+    }
+    
+    setTaxInfo((prev) => {
+      const newState = { ...prev, [name]: correctedValue }
+      
+      // Update treaty benefits when wages change
+      if (name === "wages") {
+        const newTreatyBenefits = { ...prev.claimTreatyBenefits }
+        Object.keys(newTreatyBenefits).forEach(code => {
+          const benefit = treatyBenefits.china.find(b => b.code === code)
+          if (benefit?.applyTo === "wages") {
+            const maxAmount = benefit.max ? Math.min(benefit.max, correctedValue) : correctedValue
+            newTreatyBenefits[code as treatyCode] = maxAmount
+          }
+        })
+        newState.claimTreatyBenefits = newTreatyBenefits
+      }
+      
+      return newState
+    })
   }
 
   const handleForeignCountryChange = (value: string) => {
@@ -56,6 +96,37 @@ export default function TaxCalculator() {
   const preventWheelChange = useCallback((e: React.WheelEvent<HTMLInputElement>) => {
     e.currentTarget.blur()
   }, [])
+
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target
+    const code = name as treatyCode
+    setTaxInfo((prev) => {
+      const newTreatyBenefits = { ...prev.claimTreatyBenefits }
+      if (checked) {
+        // Find the benefit being checked
+        const benefit = treatyBenefits.china.find(b => b.code === code)
+        
+        // If this is a wage benefit, clear other wage benefits first
+        if (benefit?.applyTo === "wages") {
+          treatyBenefits.china
+            .filter(b => b.applyTo === "wages" && b.code !== code)
+            .forEach(b => delete newTreatyBenefits[b.code])
+          
+          // Apply the smaller of treaty max or wages
+          const maxAmount = benefit.max ? Math.min(benefit.max, prev.wages) : prev.wages
+          newTreatyBenefits[code] = maxAmount
+        } else if (benefit?.applyTo === "scholarships") {
+          newTreatyBenefits[code] = prev.scholarships
+        }
+      } else {
+        delete newTreatyBenefits[code]
+      }
+      return {
+        ...prev,
+        claimTreatyBenefits: newTreatyBenefits
+      }
+    })
+  }
 
   // Helper function to calculate tax based on 2024 tax brackets
   const calculateTaxUsingBrackets = (taxableIncome: number): number => {
@@ -89,14 +160,28 @@ export default function TaxCalculator() {
     foreignCountry: string,
     scholarships: number,
     wages: number,
+    claimTreatyBenefits: { [key in treatyCode]?: number }
   ): { exemptScholarships: number; exemptWages: number } => {
     switch (foreignCountry) {
       case "china":
+        const wageExemptions = treatyBenefits.china
+          .filter(benefit => benefit.applyTo === "wages" && claimTreatyBenefits[benefit.code])
+          .reduce((total, benefit) => {
+            const remainingWages = wages - total
+            const exemption = benefit.max 
+              ? Math.min(remainingWages, claimTreatyBenefits[benefit.code] || 0, benefit.max)
+              : Math.min(remainingWages, claimTreatyBenefits[benefit.code] || 0)
+            return total + exemption
+          }, 0)
+
+        const scholarshipExemptions = treatyBenefits.china
+          .filter(benefit => benefit.applyTo === "scholarships" && claimTreatyBenefits[benefit.code])
+          .reduce((total, benefit) => total + scholarships, 0)
+
         return {
-          exemptScholarships: scholarships,
-          exemptWages: Math.min(wages, 5000), // Exempt up to $5,000 of wages for China
+          exemptScholarships: scholarshipExemptions,
+          exemptWages: wageExemptions,
         }
-      // Add more countries and their specific exemption rules here
       default:
         return {
           exemptScholarships: 0,
@@ -118,13 +203,26 @@ export default function TaxCalculator() {
   }
 
   const calculateTax = () => {
-    const { foreignCountry, wages, scholarships, capitalGains, charitableDistributions, stateLocalTaxes } = taxInfo
+    const { 
+      foreignCountry, 
+      wages, 
+      scholarships, 
+      capitalGains, 
+      charitableDistributions, 
+      stateLocalTaxes,
+      claimTreatyBenefits,
+    } = taxInfo
 
-    const { exemptScholarships, exemptWages } = calculateTreatyExemptions(foreignCountry, scholarships, wages)
+    const { exemptScholarships, exemptWages } = calculateTreatyExemptions(
+      foreignCountry, 
+      scholarships, 
+      wages,
+      claimTreatyBenefits
+    )
 
     const totalEffectivelyConnectedIncome = wages - exemptWages
     const totalAdjustmentsToIncome = scholarships - exemptScholarships
-    const adjustedGrossIncome = totalEffectivelyConnectedIncome - totalAdjustmentsToIncome
+    const adjustedGrossIncome = totalEffectivelyConnectedIncome + totalAdjustmentsToIncome
     const itemizedDeductions = calculateItemizedDeduction(foreignCountry, charitableDistributions, stateLocalTaxes)
     const taxableIncome = Math.max(0, adjustedGrossIncome - itemizedDeductions)
 
@@ -198,6 +296,20 @@ export default function TaxCalculator() {
                 }}
               />
             </div>
+            {taxInfo.foreignCountry === "china" && taxInfo.wages > 0 && (
+              <div className="space-y-4">
+                {treatyBenefits.china
+                  .filter(benefit => benefit.applyTo === "wages")
+                  .map((benefit) => (
+                    <TreatyBenefitInput
+                      key={benefit.code}
+                      benefit={benefit}
+                      claimTreatyBenefits={taxInfo.claimTreatyBenefits}
+                      onCheckboxChange={handleCheckboxChange}
+                    />
+                  ))}
+              </div>
+            )}
             <div>
               <Label htmlFor="scholarships">Scholarship and fellowship grants (Schedule 1, Line 8r)</Label>
               <Input
@@ -214,6 +326,20 @@ export default function TaxCalculator() {
                 }}
               />
             </div>
+            {taxInfo.foreignCountry === "china" && taxInfo.scholarships > 0 && (
+              <div className="space-y-4">
+                {treatyBenefits.china
+                  .filter(benefit => benefit.applyTo === "scholarships")
+                  .map((benefit) => (
+                    <TreatyBenefitInput
+                      key={benefit.code}
+                      benefit={benefit}
+                      claimTreatyBenefits={taxInfo.claimTreatyBenefits}
+                      onCheckboxChange={handleCheckboxChange}
+                    />
+                  ))}
+              </div>
+            )}
             <Collapsible open={isAdvancedOpen} onOpenChange={setIsAdvancedOpen}>
               <CollapsibleTrigger asChild>
                 <Button type="button" onClick={toggleAdvanced} variant="outline" className="w-full justify-between">
