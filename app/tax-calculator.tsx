@@ -12,14 +12,14 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
 import { format } from "date-fns"
-import type { TaxInfo, TreatyExemption, incomeCode } from "@/app/types"
+import type { TaxInfo, TreatyExemption, TreatyRate, incomeCode } from "@/app/types"
 import { TreatyExemptionInput } from "@/components/treaty-exemption-input"
 
 const treatyExemptions: Record<string, TreatyExemption[]> = {
   china: [
     {
       code: "20",
-      name: "Treaty Benefits for Studying and Training",
+      name: "Treaty Benefits for Studying and Training (up to $5,000)",
       max: 5000,
       applyTo: "wages",
     },
@@ -36,7 +36,46 @@ const treatyExemptions: Record<string, TreatyExemption[]> = {
       applyTo: "scholarships",
     }
   ],
+  southKorea: [
+    {
+      code: "16",
+      name: "Treaty Benefits for Scholarship or Fellowship Grants",
+      max: null,
+      applyTo: "scholarships",
+    },
+    {
+      code: "19",
+      name: "Treaty Benefits for Teaching and Research",
+      max: null,
+      applyTo: "wages",
+    },
+    {
+      code: "20",
+      name: "Treaty Benefits for Studying and Training (up to $2,000)",
+      max: 2000,
+      applyTo: "wages",
+    }
+  ],
+  india: [
+    {
+      code: "19",
+      name: "Treaty Benefits for Teaching and Research",
+      max: null,
+      applyTo: "wages",
+    }
+  ]
 }
+
+const treatyRates: Record<string, TreatyRate[]> = {
+  southKorea: [
+    {
+      type: "capitalGains",
+      name: "Treaty Rate for Capital Gains",
+      rate: 0.0,
+    }
+  ]
+}
+
 
 export default function TaxCalculator() {
   const [taxInfo, setTaxInfo] = useState<TaxInfo>({
@@ -46,7 +85,8 @@ export default function TaxCalculator() {
     capitalGains: 0,
     charitableDistributions: 0,
     stateLocalTaxes: 0,
-    claimTreatyExemptions: {}
+    claimTreatyExemptions: {},
+    claimTreatyRates: {}
   })
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
 
@@ -74,8 +114,9 @@ export default function TaxCalculator() {
       // Update treaty exemptions when wages change
       if (name === "wages") {
         const newTreatyExemptions = { ...prev.claimTreatyExemptions }
+        const countryExemptions = treatyExemptions[prev.foreignCountry] || []
         Object.keys(newTreatyExemptions).forEach(code => {
-          const exemption = treatyExemptions.china.find(b => b.code === code)
+          const exemption = countryExemptions.find(b => b.code === code)
           if (exemption?.applyTo === "wages") {
             const maxAmount = exemption.max ? Math.min(exemption.max, correctedValue) : correctedValue
             newTreatyExemptions[code as incomeCode] = maxAmount
@@ -102,10 +143,11 @@ export default function TaxCalculator() {
     setTaxInfo((prev) => {
       const newTreatyExemptions = { ...prev.claimTreatyExemptions }
       if (checked) {
-        const exemption = treatyExemptions.china.find(b => b.code === code)
+        const countryExemptions = treatyExemptions[prev.foreignCountry] || []
+        const exemption = countryExemptions.find(b => b.code === code)
         
         if (exemption?.applyTo === "wages") {
-          treatyExemptions.china
+          countryExemptions
             .filter(b => b.applyTo === "wages" && b.code !== code)
             .forEach(b => delete newTreatyExemptions[b.code])
           
@@ -122,6 +164,16 @@ export default function TaxCalculator() {
         claimTreatyExemptions: newTreatyExemptions
       }
     })
+  }
+
+  const handleTreatyRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTaxInfo(prev => ({
+      ...prev,
+      claimTreatyRates: {
+        ...prev.claimTreatyRates,
+        [e.target.id]: e.target.checked
+      }
+    }))
   }
 
   // Helper function to calculate tax based on 2024 tax brackets
@@ -156,33 +208,34 @@ export default function TaxCalculator() {
     foreignCountry: string,
     scholarships: number,
     wages: number,
-    claimTreatyExemptions: { [key in incomeCode]?: number }
+    claimTreatyExemptions: TaxInfo["claimTreatyExemptions"]
   ): { exemptScholarships: number; exemptWages: number } => {
-    switch (foreignCountry) {
-      case "china":
-        const wageExemptions = treatyExemptions.china
-          .filter(exemption => exemption.applyTo === "wages" && claimTreatyExemptions[exemption.code])
-          .reduce((total, exemption) => {
-            const remainingWages = wages - total
-            const exemptAmount = exemption.max 
-              ? Math.min(remainingWages, claimTreatyExemptions[exemption.code] || 0, exemption.max)
-              : Math.min(remainingWages, claimTreatyExemptions[exemption.code] || 0)
-            return total + exemptAmount
-          }, 0)
+    if (foreignCountry in treatyExemptions) {
+      const countryExemptions = treatyExemptions[foreignCountry]
+      
+      const wageExemptions = countryExemptions
+        .filter(exemption => exemption.applyTo === "wages" && claimTreatyExemptions[exemption.code])
+        .reduce((total, exemption) => {
+          const remainingWages = wages - total
+          const exemptAmount = exemption.max 
+            ? Math.min(remainingWages, claimTreatyExemptions[exemption.code] || 0, exemption.max)
+            : Math.min(remainingWages, claimTreatyExemptions[exemption.code] || 0)
+          return total + exemptAmount
+        }, 0)
 
-        const scholarshipExemptions = treatyExemptions.china
-          .filter(exemption => exemption.applyTo === "scholarships" && claimTreatyExemptions[exemption.code])
-          .reduce((total, exemption) => total + scholarships, 0)
+      const scholarshipExemptions = countryExemptions
+        .filter(exemption => exemption.applyTo === "scholarships" && claimTreatyExemptions[exemption.code])
+        .reduce((total, exemption) => total + scholarships, 0)
 
-        return {
-          exemptScholarships: scholarshipExemptions,
-          exemptWages: wageExemptions,
-        }
-      default:
-        return {
-          exemptScholarships: 0,
-          exemptWages: 0,
-        }
+      return {
+        exemptScholarships: scholarshipExemptions,
+        exemptWages: wageExemptions,
+      }
+    }
+    
+    return {
+      exemptScholarships: 0,
+      exemptWages: 0,
     }
   }
 
@@ -198,6 +251,20 @@ export default function TaxCalculator() {
     return charitableDistributions + saltDeduction
   }
 
+  const calculateTaxOnNec = (
+    foreignCountry: string,
+    capitalGains: number,
+    claimTreatyRates: TaxInfo["claimTreatyRates"]
+  ): number => {
+    if (claimTreatyRates["capitalGains"] && foreignCountry in treatyRates) {
+      const treatyRate = treatyRates[foreignCountry].find(r => r.type === "capitalGains")
+      if (treatyRate) {
+        return capitalGains * treatyRate.rate
+      }
+    }
+    return capitalGains * 0.3 // Default 30% rate if no treaty rate applies
+  }
+
   const calculateTax = () => {
     const { 
       foreignCountry, 
@@ -207,6 +274,7 @@ export default function TaxCalculator() {
       charitableDistributions, 
       stateLocalTaxes,
       claimTreatyExemptions,
+      claimTreatyRates,
     } = taxInfo
 
     const { exemptScholarships, exemptWages } = calculateTreatyExemptions(
@@ -223,10 +291,10 @@ export default function TaxCalculator() {
     const taxableIncome = Math.max(0, adjustedGrossIncome - itemizedDeductions)
 
     const taxOnEffectivelyConnectedIncome = calculateTaxUsingBrackets(taxableIncome)
-    const taxOnIncomeNotEffectivelyConnected = capitalGains * 0.3
+    const taxOnIncomeNotEffectivelyConnected = calculateTaxOnNec(foreignCountry, capitalGains, claimTreatyRates)
     const totalTax = taxOnEffectivelyConnectedIncome + taxOnIncomeNotEffectivelyConnected
 
-    const totalIncome = wages + capitalGains // Use full wages for total income
+    const totalIncome = wages + scholarships + capitalGains;
     const effectiveTaxRate = totalIncome > 0 ? (totalTax / totalIncome) * 100 : 0
 
     return {
@@ -271,6 +339,7 @@ export default function TaxCalculator() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="china">China, People&#39;s Republic of</SelectItem>
+                  <SelectItem value="southKorea">Korea, South</SelectItem>
                   <SelectItem value="india">India</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
@@ -292,9 +361,9 @@ export default function TaxCalculator() {
                 }}
               />
             </div>
-            {taxInfo.foreignCountry === "china" && taxInfo.wages > 0 && (
+            {taxInfo.foreignCountry && taxInfo.wages > 0 && treatyExemptions[taxInfo.foreignCountry] && (
               <div className="space-y-4">
-                {treatyExemptions.china
+                {treatyExemptions[taxInfo.foreignCountry]
                   .filter(exemption => exemption.applyTo === "wages")
                   .map((exemption) => (
                     <TreatyExemptionInput
@@ -322,9 +391,9 @@ export default function TaxCalculator() {
                 }}
               />
             </div>
-            {taxInfo.foreignCountry === "china" && taxInfo.scholarships > 0 && (
+            {taxInfo.foreignCountry && taxInfo.scholarships > 0 && treatyExemptions[taxInfo.foreignCountry] && (
               <div className="space-y-4">
-                {treatyExemptions.china
+                {treatyExemptions[taxInfo.foreignCountry]
                   .filter(exemption => exemption.applyTo === "scholarships")
                   .map((exemption) => (
                     <TreatyExemptionInput
@@ -360,6 +429,20 @@ export default function TaxCalculator() {
                       setTaxInfo((prev) => ({ ...prev, capitalGains: value }))
                     }}
                   />
+                  {taxInfo.foreignCountry && taxInfo.capitalGains > 0 && treatyRates[taxInfo.foreignCountry]?.some(r => r.type === "capitalGains") && (
+                    <div className="flex items-center space-x-2 mt-2">
+                      <input
+                        type="checkbox"
+                        id="capitalGains"
+                        checked={taxInfo.claimTreatyRates["capitalGains"]}
+                        onChange={handleTreatyRateChange}
+                        className="h-4 w-4"
+                      />
+                      <Label htmlFor="capitalGains">
+                        Apply Treaty Rate for Capital Gains ({(treatyRates[taxInfo.foreignCountry]?.find(r => r.type === "capitalGains")?.rate ?? 0.3) * 100}%)
+                      </Label>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="charitableDistributions">Gifts to U.S. Charities (Schedule A, Line 5)</Label>

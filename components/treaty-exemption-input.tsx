@@ -26,7 +26,6 @@ export function TreatyExemptionInput({
         />
         <Label htmlFor={exemption.code}>
           {exemption.name}
-          {exemption.max && ` (up to $${exemption.max.toLocaleString()})`}
         </Label>
       </div>
       {(exemption.code in claimTreatyExemptions) && (

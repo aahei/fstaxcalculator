@@ -7,7 +7,7 @@ export interface TreatyExemption {
   applyTo: "wages" | "scholarships"
 }
 
-export interface TaxInfo {
+export type TaxInfo = {
   foreignCountry: string
   wages: number
   scholarships: number
@@ -15,12 +15,13 @@ export interface TaxInfo {
   charitableDistributions: number
   stateLocalTaxes: number
   claimTreatyExemptions: { [key in incomeCode]?: number }
+  claimTreatyRates: { [key in incomeType]?: boolean }
 }
 
-export type TreatyBenefit = {
-  code: incomeCode
+export type incomeType = "capitalGains"
+
+export interface TreatyRate {
+  type: incomeType
   name: string
-  max?: number | null
-  applyTo: "wages" | "scholarships" | "capitalGains"
-  rate?: number
-} 
+  rate: number // 0.00 to 1.00
+}
